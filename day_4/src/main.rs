@@ -100,13 +100,62 @@ fn part_one(input: Vec<Vec<char>>, check_word: &str) -> i32 {
     total_matches
 }
 
+fn part_two(input: Vec<Vec<char>>, check_word: &str) -> i32 {
+    let mut total_matches = 0;
+    let middle_letter = check_word.chars().nth(check_word.len()/2).unwrap();
+    
+    for x in 0..input.len() {
+        for y in 0..input[x].len() {
+            if input[x][y] == middle_letter && x>=1 && y>=1 && x+1<input.len() && y+1<input[x].len() {
+                let mut matches_on_this_letter = 0;
+                //check diagonal right down
+                let word = (0..check_word.len())
+                    .map(|i| input[x+i-1][y+i-1])
+                    .collect::<Vec<char>>();
+                if word == check_word.chars().collect::<Vec<char>>() {
+                    matches_on_this_letter += 1;
+                }
+
+                //check diagonal left down
+                let word = (0..check_word.len())
+                    .map(|i| input[x+i-1][y+1-i])
+                    .collect::<Vec<char>>();
+                if word == check_word.chars().collect::<Vec<char>>() {
+                    matches_on_this_letter += 1;
+                }
+
+                //check diagonal right up
+                let word = (0..check_word.len())
+                    .map(|i| input[x+1-i][y+i-1])
+                    .collect::<Vec<char>>();
+                if word == check_word.chars().collect::<Vec<char>>() {
+                    matches_on_this_letter += 1;
+                }
+
+                //check diagonal left up
+                let word = (0..check_word.len())
+                    .map(|i| input[x+1-i][y+1-i])
+                    .collect::<Vec<char>>();
+                if word == check_word.chars().collect::<Vec<char>>() {
+                    matches_on_this_letter += 1;
+                }
+
+                if matches_on_this_letter == 2 {
+                    total_matches += 1;
+                }
+            }
+        }
+    }
+
+    total_matches
+}
+
 fn main() {
     let input = read_input();
-    println!("Input grid:");
-    for row in &input {
-        println!("{:?}", row);
-    }
     const CHECK_WORD: &str = "XMAS";
-    let total_matches = part_one(input, CHECK_WORD);
+    const CHECK_WORD_TWO: &str = "MAS";
+    let total_matches = part_one(input.clone(), CHECK_WORD);
     println!("Total matches: {}", total_matches);
+    let total_matches_two = part_two(input.clone(), CHECK_WORD_TWO);
+    println!("Total matches two: {}", total_matches_two);
 }

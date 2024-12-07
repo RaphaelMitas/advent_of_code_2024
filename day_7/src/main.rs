@@ -1,4 +1,7 @@
 use std::fs;
+use std::io::Write;
+use rayon::prelude::*;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn extract_numbers(line: &str) -> Vec<i64> {
     let line = line.replace(":", "");
@@ -61,26 +64,34 @@ fn main() {
     let mut p2_total_valid_operations = 0;
     let mut p2_total_result = 0;
 
-    let number_of_lines = input.lines().count();
-
-    for i in 0..number_of_lines {
-        if i % 100 == 0 {
-            println!("processing line: {}/{}", i, number_of_lines);
-        }
-        let line = input.lines().nth(i).unwrap();
+    let lines: Vec<_> = input.lines().collect();
+    let number_of_lines = lines.len();
+    let processed_lines = AtomicUsize::new(0);
+    let results: Vec<_> = lines.par_iter().enumerate().map(|(_i, line)| {
         let numbers = extract_numbers(line);
         let p1_number_of_valid_operations = find_valid_operations(numbers[0], numbers[1..].to_vec(), 0);
-        p1_total_valid_operations += p1_number_of_valid_operations;
-        if p1_number_of_valid_operations > 0 {
-            p1_total_result += numbers[0];
+        let p2_number_of_valid_operations = find_valid_operations_part_2(numbers[0], numbers[1..].to_vec(), 0);
+        
+        let current = processed_lines.fetch_add(1, Ordering::Relaxed);
+        print!("\rprocessed: {}%", current * 100 / number_of_lines);
+        std::io::stdout().flush().unwrap();
+
+        (numbers[0], p1_number_of_valid_operations, p2_number_of_valid_operations)
+    }).collect();
+
+    for (number, p1_ops, p2_ops) in results {
+        p1_total_valid_operations += p1_ops;
+        if p1_ops > 0 {
+            p1_total_result += number;
         }
 
-        let p2_number_of_valid_operations = find_valid_operations_part_2(numbers[0], numbers[1..].to_vec(), 0);
-        p2_total_valid_operations += p2_number_of_valid_operations;
-        if p2_number_of_valid_operations > 0 {
-            p2_total_result += numbers[0];
+        p2_total_valid_operations += p2_ops;
+        if p2_ops > 0 {
+            p2_total_result += number;
         }
     }
+    println!();
+
     println!("part 1: total_valid_operations: {}", p1_total_valid_operations);
     println!("part 1: total_result: {}", p1_total_result);
     println!("part 2: total_valid_operations: {}", p2_total_valid_operations);

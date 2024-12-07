@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use std::collections::HashSet;
 use std::fs;
 
@@ -108,53 +109,40 @@ impl Map {
         visited.len()
     }
 
-    fn simulate_with_extra_obstacle(&mut self, obstacle_pos: Position) -> bool {
-        if obstacle_pos == self.start_pos {
-            return false;
-        }
-
-        let mut visited_states = HashSet::with_capacity(self.grid.len() * self.grid[0].len());
-        let max_iterations = self.grid.len() * self.grid[0].len() * 4;
-        let mut iterations = 0;
-
-        // Reset guard position and direction to start
-        self.guard_pos = self.start_pos;
-        self.guard_dir = Direction::Up;
-
-        while iterations < max_iterations {
-            iterations += 1;
-            let state = (self.guard_pos, self.guard_dir);
-            
+    fn count_loop_causing_positions(&self) -> usize {
+        // First, calculate the guard's normal path - O(M)
+        let mut normal_path = Vec::new();
+        let mut visited_states = HashSet::new();
+        let mut guard_pos = self.start_pos;
+        let mut guard_dir = Direction::Up;
+        
+        // Store the complete path until guard exits or loops
+        loop {
+            let state = (guard_pos, guard_dir);
             if visited_states.contains(&state) {
-                return true;
+                break;
             }
+            normal_path.push(state);
             visited_states.insert(state);
 
-            let (delta_row, delta_col) = self.guard_dir.get_delta();
+            let (delta_row, delta_col) = guard_dir.get_delta();
             let next_pos = Position {
-                row: self.guard_pos.row + delta_row,
-                col: self.guard_pos.col + delta_col,
+                row: guard_pos.row + delta_row,
+                col: guard_pos.col + delta_col,
             };
 
             if !self.is_within_bounds(&next_pos) {
-                return false;
+                break;
             }
 
-            if self.has_obstacle(&next_pos) || next_pos == obstacle_pos {
-                self.guard_dir = self.guard_dir.turn_right();
+            if self.has_obstacle(&next_pos) {
+                guard_dir = guard_dir.turn_right();
             } else {
-                self.guard_pos = next_pos;
+                guard_pos = next_pos;
             }
         }
-        false
-    }
 
-    fn count_loop_causing_positions(&self) -> usize {
-        let mut count = 0;
-        let total_positions = self.grid.len() * self.grid[0].len();
-        let mut checked = 0;
-        
-        // Pre-allocate the positions to check
+        // Collect empty positions
         let positions: Vec<Position> = (0..self.grid.len())
             .flat_map(|row| {
                 (0..self.grid[0].len()).filter_map(move |col| {
@@ -167,22 +155,75 @@ impl Map {
             })
             .collect();
 
-        let total_to_check = positions.len();
-        println!("Total positions to check: {}", total_to_check);
+        // Process positions in parallel
+        let count = positions.par_iter()
+            .enumerate()
+            .map(|(_checked, &pos)| {
 
-        for pos in positions {
-            checked += 1;
-            if checked % 100 == 0 {
-                println!("Checked {}/{} positions... (Found {} loops)", checked, total_to_check, count);
-            }
-            
-            let mut map_clone = self.clone();
-            if map_clone.simulate_with_extra_obstacle(pos) {
-                count += 1;
-            }
-        }
+                // For each position, check if it intersects with the normal path
+                for &(path_pos, path_dir) in &normal_path {
+                    let (delta_row, delta_col) = path_dir.get_delta();
+                    let next_pos = Position {
+                        row: path_pos.row + delta_row,
+                        col: path_pos.col + delta_col,
+                    };
+
+                    if next_pos == pos {
+                        // This position would cause the guard to turn right
+                        return would_create_loop(path_pos, path_dir.turn_right(), pos, &self.grid);
+                    }
+                }
+                false
+            })
+            .filter(|&creates_loop| creates_loop)
+            .count();
+
         count
     }
+}
+
+fn would_create_loop(start_pos: Position, start_dir: Direction, obstacle_pos: Position, grid: &Vec<Vec<char>>) -> bool {
+    let mut visited = HashSet::new();
+    let mut pos = start_pos;
+    let mut dir = start_dir;
+    let max_steps = grid.len() * grid[0].len() * 4;
+
+    for _ in 0..max_steps {
+        let state = (pos, dir);
+        if visited.contains(&state) {
+            return true;
+        }
+        visited.insert(state);
+
+        let (delta_row, delta_col) = dir.get_delta();
+        let next_pos = Position {
+            row: pos.row + delta_row,
+            col: pos.col + delta_col,
+        };
+
+        if !is_within_bounds(&next_pos, grid) {
+            return false;
+        }
+
+        if has_obstacle(&next_pos, grid) || next_pos == obstacle_pos {
+            dir = dir.turn_right();
+        } else {
+            pos = next_pos;
+        }
+    }
+    false
+}
+
+fn is_within_bounds(pos: &Position, grid: &Vec<Vec<char>>) -> bool {
+    pos.row >= 0 && pos.row < grid.len() as i32 &&
+    pos.col >= 0 && pos.col < grid[0].len() as i32
+}
+
+fn has_obstacle(pos: &Position, grid: &Vec<Vec<char>>) -> bool {
+    if !is_within_bounds(pos, grid) {
+        return true;
+    }
+    grid[pos.row as usize][pos.col as usize] == '#'
 }
 
 fn main() {
